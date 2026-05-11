@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>En Balade</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;background:#fff;color:#111;overflow:hidden}
+#app{display:flex;flex-direction:column;height:100vh}
+nav{display:flex;align-items:center;gap:20px;padding:0 28px;height:46px;border-bottom:0.5px solid #e0e0e0;background:#fff;z-index:1000;position:relative;flex-shrink:0}
+.logo{font-size:13px;letter-spacing:4px;text-transform:uppercase;font-weight:500}
+.nav-modes{display:flex;gap:3px}
+.mode-btn{padding:3px 11px;font-size:11px;border:0.5px solid #ccc;border-radius:6px;cursor:pointer;background:#fff;color:#888;letter-spacing:.03em;transition:all .15s}
+.mode-btn.on{background:#111;color:#fff;border-color:#111}
+.nav-right{margin-left:auto;display:flex;gap:8px;align-items:center}
+.count{font-size:10px;color:#bbb;letter-spacing:.05em}
+.add-btn{padding:4px 13px;font-size:11px;border:0.5px solid #111;border-radius:6px;cursor:pointer;background:#fff;color:#111;letter-spacing:.05em;transition:all .15s}
+.add-btn.adding{background:#111;color:#fff}
+#filter-bar{display:flex;align-items:center;gap:8px;padding:5px 28px;border-bottom:0.5px solid #e0e0e0;background:#fff;z-index:999;flex-shrink:0;overflow-x:auto}
+#filter-bar input,#filter-bar select{font-size:11px;padding:3px 8px;border:0.5px solid #ccc;border-radius:6px;background:#fff;color:#111;outline:none;height:26px}
+#filter-bar input{width:180px}
+.reset-btn{font-size:10px;background:none;border:none;color:#bbb;cursor:pointer;text-decoration:underline;white-space:nowrap}
+.zoom-btns{margin-left:auto;display:flex;gap:4px}
+.zoom-btn{width:24px;height:24px;border:0.5px solid #ccc;border-radius:6px;background:#fff;cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;color:#555;transition:background .15s}
+.zoom-btn:hover{background:#f0f0f0}
+#main{flex:1;display:flex;overflow:hidden;position:relative}
+#map{flex:1;z-index:0}
+.leaflet-tile-pane{filter:grayscale(100%) contrast(0.88) brightness(1.08)}
+.leaflet-control-attribution{font-size:9px!important}
+
+/* PIN custom */
+.eb-pin{width:8px;height:8px;border-radius:50%;background:#111;border:1.5px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.25);cursor:pointer;transition:transform .12s}
+.eb-pin:hover,.eb-pin.sel{transform:scale(1.5)}
+.eb-pin.starred{background:#fff;border:1.5px solid #111}
+
+/* PANEL */
+#panel{position:absolute;right:0;top:0;bottom:0;width:310px;background:#fff;border-left:0.5px solid #e0e0e0;z-index:800;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1)}
+#panel.open{transform:translateX(0)}
+#panel-head{padding:12px 16px 10px;border-bottom:0.5px solid #e0e0e0;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-shrink:0}
+.panel-name{font-size:14px;font-weight:500;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.panel-sub{font-size:11px;color:#aaa;margin-top:2px}
+.panel-actions{display:flex;gap:6px;align-items:center;flex-shrink:0}
+.star-btn{background:none;border:none;cursor:pointer;font-size:17px;color:#ddd;transition:color .15s;padding:0;line-height:1}
+.star-btn.on{color:#111}
+.close-btn{background:none;border:none;cursor:pointer;font-size:19px;color:#bbb;padding:0;line-height:1;transition:color .15s}
+.close-btn:hover{color:#111}
+#panel-tabs{display:flex;border-bottom:0.5px solid #e0e0e0;flex-shrink:0}
+.ptab{flex:1;padding:7px 0;font-size:10px;background:none;border:none;border-bottom:1.5px solid transparent;cursor:pointer;color:#bbb;text-transform:uppercase;letter-spacing:.1em;transition:all .15s;font-family:inherit}
+.ptab.on{color:#111;border-bottom-color:#111;font-weight:500}
+#panel-body{flex:1;overflow-y:auto;padding:14px 16px}
+#panel-body::-webkit-scrollbar{width:3px}
+#panel-body::-webkit-scrollbar-thumb{background:#e8e8e8}
+
+/* INFO ROWS */
+.info-row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:0.5px solid #f0f0f0;gap:10px}
+.info-key{font-size:10px;color:#bbb;flex-shrink:0}
+.info-val{font-size:11px;text-align:right;line-height:1.4}
+.pin-note{font-size:12px;line-height:1.65;color:#777;margin-top:12px;font-style:italic}
+.badge{display:inline-block;font-size:9px;padding:2px 8px;border:0.5px solid #ddd;border-radius:20px;color:#aaa;letter-spacing:.08em;text-transform:uppercase}
+.go-btn{font-size:9px;padding:2px 8px;border:0.5px solid #ccc;border-radius:20px;color:#555;text-decoration:none;letter-spacing:.08em;text-transform:uppercase;transition:background .15s}
+.go-btn:hover{background:#f5f5f5}
+.pin-badges{margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+
+/* FORM */
+.form-field{margin-bottom:11px}
+.form-field label{display:block;font-size:9px;color:#bbb;text-transform:uppercase;letter-spacing:.09em;margin-bottom:3px}
+.form-field input,.form-field select,.form-field textarea{width:100%;padding:5px 0;border:none;border-bottom:0.5px solid #ddd;background:transparent;font-size:12px;color:#111;outline:none;font-family:inherit;transition:border-color .15s}
+.form-field input:focus,.form-field select:focus,.form-field textarea:focus{border-bottom-color:#111}
+.form-field textarea{resize:none;min-height:60px}
+.form-row{display:flex;gap:14px}
+.form-row .form-field{flex:1}
+.form-check{display:flex;align-items:center;gap:8px;font-size:11px;color:#888;cursor:pointer;margin-bottom:12px}
+.save-btn{width:100%;padding:9px;background:#111;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;letter-spacing:.05em;transition:background .15s;font-family:inherit}
+.save-btn:hover{background:#333}
+
+/* SKETCH */
+.sketch-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.sketch-label{font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:.08em}
+.sketch-btns{display:flex;gap:5px}
+.sketch-btn{font-size:10px;border-radius:5px;padding:3px 9px;cursor:pointer;font-family:inherit}
+.sketch-btn.solid{background:#111;color:#fff;border:none}
+.sketch-btn.outline{background:#fff;color:#555;border:0.5px solid #ccc}
+#sketch-canvas{border:0.5px solid #e0e0e0;border-radius:6px;display:block;width:100%;background:#fafafa;cursor:crosshair;touch-action:none}
+.sketch-import{margin-top:12px}
+.sketch-import label{font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:.08em;display:block;margin-bottom:6px}
+
+/* PHOTOS */
+.photo-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.photo-label{font-size:10px;color:#bbb;text-transform:uppercase;letter-spacing:.08em}
+.photo-add-btn{font-size:10px;background:#111;color:#fff;border:none;border-radius:5px;padding:3px 9px;cursor:pointer;position:relative;overflow:hidden}
+.photo-add-btn input{position:absolute;inset:0;opacity:0;cursor:pointer;font-size:0}
+.photo-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;height:130px;border:1px dashed #ddd;border-radius:6px;color:#bbb;font-size:11px;letter-spacing:.05em;cursor:pointer;position:relative}
+.photo-empty input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.photo-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.photo-item{position:relative;aspect-ratio:1;border-radius:6px;overflow:hidden;border:0.5px solid #e8e8e8}
+.photo-item img{width:100%;height:100%;object-fit:cover;display:block}
+.photo-del{position:absolute;top:4px;right:4px;width:18px;height:18px;border-radius:50%;background:rgba(0,0,0,.55);border:none;color:#fff;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;line-height:1}
+.photo-add-cell{aspect-ratio:1;display:flex;align-items:center;justify-content:center;border:1px dashed #ddd;border-radius:6px;cursor:pointer;color:#bbb;font-size:20px;position:relative}
+.photo-add-cell input{position:absolute;inset:0;opacity:0;cursor:pointer}
+
+/* QUOTE */
+#quote{position:absolute;bottom:6px;left:50%;transform:translateX(-50%);font-size:9px;color:#999;background:rgba(255,255,255,.88);padding:3px 12px;border-radius:3px;white-space:nowrap;pointer-events:none;letter-spacing:.03em;z-index:700}
+</style>
+</head>
+<body>
+<div id="app">
+  <nav>
+    <div class="logo">En Balade</div>
+    <div class="nav-modes">
+      <button class="mode-btn on" onclick="setMode('mine',this)">Mon répertoire</button>
+      <button class="mode-btn" onclick="setMode('community',this)">Communauté</button>
+      <button class="mode-btn" onclick="setMode('starred',this)">Favoris ★</button>
+    </div>
+    <div class="nav-right">
+      <span class="count" id="count">0 bâtiments</span>
+      <button class="add-btn" id="add-btn" onclick="toggleAdding()">+ Ajouter</button>
+    </div>
+  </nav>
+
+  <div id="filter-bar">
+    <input type="text" id="search" placeholder="Bâtiment, architecte…" oninput="renderPins()"/>
+    <select id="f-type" onchange="renderPins()">
+      <option>Type</option><option>Musée</option><option>Église</option>
+      <option>Résidentiel</option><option>Bureau</option><option>Pont</option>
+      <option>Public</option><option>Industriel</option>
+    </select>
+    <select id="f-style" onchange="renderPins()">
+      <option>Style</option><option>Baroque</option><option>Modernisme</option>
+      <option>Brutalisme</option><option>Contemporain</option><option>Gothique</option>
+      <option>Art Déco</option><option>Minimalisme</option>
+    </select>
+    <select id="f-epoch" onchange="renderPins()">
+      <option>Époque</option><option>Avant 1500</option><option>1500–1800</option>
+      <option>1800–1900</option><option>1900–1950</option><option>1950–2000</option>
+      <option>Après 2000</option>
+    </select>
+    <button class="reset-btn" onclick="resetFilters()">Réinitialiser</button>
+    <div class="zoom-btns">
+      <button class="zoom-btn" onclick="map.zoomIn()">+</button>
+      <button class="zoom-btn" onclick="map.zoomOut()">−</button>
+    </div>
+  </div>
+
+  <div id="main">
+    <div id="map"></div>
+    <div id="panel">
+      <div id="panel-head">
+        <div style="flex:1;min-width:0">
+          <div class="panel-name" id="p-name"></div>
+          <div class="panel-sub" id="p-sub"></div>
+        </div>
+        <div class="panel-actions">
+          <button class="star-btn" id="star-btn" onclick="toggleStar()" title="Favori">★</button>
+          <button class="close-btn" onclick="closePanel()">×</button>
+        </div>
+      </div>
+      <div id="panel-tabs">
+        <button class="ptab on" onclick="setTab('info',this)">Infos</button>
+        <button class="ptab" onclick="setTab('sketch',this)">Croquis</button>
+        <button class="ptab" onclick="setTab('photos',this)">Photos</button>
+      </div>
+      <div id="panel-body"></div>
+    </div>
+    <div id="quote">« Le bâtiment final est l'œuvre de l'usager. » — Yona Friedman</div>
+  </div>
+</div>
+
+<script>
+// ── DATA ─────────────────────────────────────────────────────────────────────
+let pins = [
+  {id:1,name:"Centre Pompidou",architect:"Renzo Piano & Richard Rogers",type:"Musée",style:"Contemporain",epoch:"1950–2000",lat:48.8606,lng:2.3522,year:1977,city:"Paris",address:"Place Georges-Pompidou, 75004 Paris",note:"Structure exposée, révolutionnaire pour l'époque.",pub:true,starred:true,photos:[],strokes:[]},
+  {id:2,name:"Sagrada Família",architect:"Antoni Gaudí",type:"Église",style:"Modernisme",epoch:"1800–1900",lat:41.4036,lng:2.1744,year:1882,city:"Barcelone",address:"C/ de Mallorca, 401, Barcelona",note:"Une cathédrale vivante, toujours en construction.",pub:true,starred:true,photos:[],strokes:[]},
+  {id:3,name:"Fallingwater",architect:"Frank Lloyd Wright",type:"Résidentiel",style:"Modernisme",epoch:"1900–1950",lat:39.906,lng:-79.468,year:1939,city:"Pennsylvania",address:"1491 Mill Run Rd, Mill Run, PA",note:"Dialogue parfait entre architecture et nature.",pub:true,starred:false,photos:[],strokes:[]},
+  {id:4,name:"Tate Modern",architect:"Herzog & de Meuron",type:"Musée",style:"Brutalisme",epoch:"Après 2000",lat:51.5076,lng:-0.0994,year:2000,city:"Londres",address:"Bankside, London SE1 9TG",note:"",pub:false,starred:false,photos:[],strokes:[]},
+  {id:5,name:"Fondation Louis Vuitton",architect:"Frank Gehry",type:"Musée",style:"Contemporain",epoch:"Après 2000",lat:48.8796,lng:2.2567,year:2014,city:"Paris",address:"8 Av. du Mahatma Gandhi, 75116 Paris",note:"Voiles de verre spectaculaires.",pub:true,starred:false,photos:[],strokes:[]},
+  {id:6,name:"Sainte-Chapelle",architect:"Pierre de Montreuil",type:"Église",style:"Gothique",epoch:"Avant 1500",lat:48.8554,lng:2.345,year:1248,city:"Paris",address:"8 Bd du Palais, 75001 Paris",note:"Vitraux extraordinaires.",pub:true,starred:true,photos:[],strokes:[]},
+  {id:7,name:"Nakagin Capsule Tower",architect:"Kisho Kurokawa",type:"Résidentiel",style:"Brutalisme",epoch:"1950–2000",lat:35.6661,lng:139.7603,year:1972,city:"Tokyo",address:"8-16 Ginza, Chuo City, Tokyo",note:"Une métaphore de la cellule vivante.",pub:true,starred:true,photos:[],strokes:[]},
+];
+
+let mode='mine', selectedId=null, adding=false, currentTab='info';
+let isDrawing=false, currentStroke=[], pendingStrokes=[];
+let leafletMarkers={};
+
+// ── MAP ───────────────────────────────────────────────────────────────────────
+const map = L.map('map',{zoomControl:false,attributionControl:true}).setView([30,15],3);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  attribution:'© <a href="https://openstreetmap.org">OpenStreetMap</a>',maxZoom:19
+}).addTo(map);
+
+// grayscale via CSS on tile pane — already in style
+
+map.on('click', e => {
+  if(!adding) return;
+  const np = {id:Date.now(),name:'',architect:'',type:'Musée',style:'Contemporain',epoch:'Après 2000',lat:e.latlng.lat,lng:e.latlng.lng,year:'',city:'',address:'',note:'',pub:false,starred:false,photos:[],strokes:[]};
+  pins.push(np);
+  selectedId = np.id;
+  adding = false;
+  document.getElementById('add-btn').classList.remove('adding');
+  document.getElementById('add-btn').textContent='+ Ajouter';
+  map.getContainer().style.cursor='';
+  renderPins();
+  openPanel(np.id,'info',true);
+});
+
+function makeIcon(p){
+  return L.divIcon({className:'',html:`<div class="eb-pin${p.starred?' starred':''}"></div>`,iconSize:[8,8],iconAnchor:[4,4]});
+}
+
+function renderPins(){
+  const ftype=document.getElementById('f-type').value;
+  const fstyle=document.getElementById('f-style').value;
+  const fepoch=document.getElementById('f-epoch').value;
+  const fsearch=document.getElementById('search').value.toLowerCase();
+  const visible=pins.filter(p=>{
+    if(mode==='mine'&&p.pub===false&&!p._own&&mode!=='mine')return false;
+    if(mode==='community'&&!p.pub)return false;
+    if(mode==='starred'&&!p.starred)return false;
+    if(ftype!=='Type'&&p.type!==ftype)return false;
+    if(fstyle!=='Style'&&p.style!==fstyle)return false;
+    if(fepoch!=='Époque'&&p.epoch!==fepoch)return false;
+    if(fsearch&&!p.name.toLowerCase().includes(fsearch)&&!(p.architect||'').toLowerCase().includes(fsearch))return false;
+    return true;
+  });
+  // remove old
+  Object.values(leafletMarkers).forEach(m=>map.removeLayer(m));
+  leafletMarkers={};
+  visible.forEach(p=>{
+    const m=L.marker([p.lat,p.lng],{icon:makeIcon(p)}).addTo(map);
+    m.bindTooltip(p.name||'Nouveau bâtiment',{direction:'top',offset:[0,-6],opacity:1});
+    m.on('click',()=>openPanel(p.id,'info',false));
+    leafletMarkers[p.id]=m;
+  });
+  document.getElementById('count').textContent=`${visible.length} bâtiment${visible.length!==1?'s':''}`;
+}
+
+// ── PANEL ─────────────────────────────────────────────────────────────────────
+function openPanel(id, tab='info', isNew=false){
+  selectedId=id;
+  currentTab=tab;
+  const p=pins.find(x=>x.id===id);
+  if(!p)return;
+  document.getElementById('p-name').textContent=p.name||'Nouveau bâtiment';
+  document.getElementById('p-sub').textContent=[p.city,p.year].filter(Boolean).join(' · ');
+  const sb=document.getElementById('star-btn');
+  sb.className='star-btn'+(p.starred?' on':'');
+  document.getElementById('panel').classList.add('open');
+  setTab(tab, null, isNew);
+}
+
+function closePanel(){
+  document.getElementById('panel').classList.remove('open');
+  selectedId=null;
+  pendingStrokes=[];
+}
+
+function setTab(tab, btn, isNew=false){
+  currentTab=tab;
+  document.querySelectorAll('.ptab').forEach(b=>b.classList.remove('on'));
+  if(btn) btn.classList.add('on');
+  else document.querySelectorAll('.ptab')[['info','sketch','photos'].indexOf(tab)]?.classList.add('on');
+  const p=pins.find(x=>x.id===selectedId);
+  if(!p)return;
+  const body=document.getElementById('panel-body');
+  if(tab==='info') renderInfoTab(p, isNew, body);
+  else if(tab==='sketch') renderSketchTab(p, body);
+  else renderPhotosTab(p, body);
+}
+
+function renderInfoTab(p, isNew, body){
+  if(isNew||!p.name){
+    body.innerHTML=`
+    <div class="form-field"><label>Nom du bâtiment *</label><input id="f-name" value="${p.name||''}" placeholder="ex. Centre Pompidou"/></div>
+    <div class="form-field"><label>Architecte</label><input id="f-arch" value="${p.architect||''}" placeholder="ex. Renzo Piano"/></div>
+    <div class="form-row">
+      <div class="form-field"><label>Ville</label><input id="f-city" value="${p.city||''}"/></div>
+      <div class="form-field"><label>Année</label><input id="f-year" type="number" value="${p.year||''}"/></div>
+    </div>
+    <div class="form-field"><label>Adresse</label><input id="f-addr" value="${p.address||''}"/></div>
+    <div class="form-row">
+      <div class="form-field"><label>Type</label><select id="f-type2">${['Musée','Église','Résidentiel','Bureau','Pont','Public','Industriel'].map(o=>`<option${p.type===o?' selected':''}>${o}</option>`).join('')}</select></div>
+      <div class="form-field"><label>Style</label><select id="f-style2">${['Baroque','Modernisme','Brutalisme','Contemporain','Gothique','Art Déco','Minimalisme'].map(o=>`<option${p.style===o?' selected':''}>${o}</option>`).join('')}</select></div>
+    </div>
+    <div class="form-field"><label>Époque</label><select id="f-epoch2">${['Avant 1500','1500–1800','1800–1900','1900–1950','1950–2000','Après 2000'].map(o=>`<option${p.epoch===o?' selected':''}>${o}</option>`).join('')}</select></div>
+    <div class="form-field"><label>Notes</label><textarea id="f-note" rows="3">${p.note||''}</textarea></div>
+    <label class="form-check"><input type="checkbox" id="f-pub"${p.pub?' checked':''}/> Rendre public (Communauté)</label>
+    <button class="save-btn" onclick="savePin()">Enregistrer</button>`;
+  } else {
+    const rows=[['Architecte',p.architect],['Type',p.type],['Style',p.style],['Époque',p.epoch],['Année',p.year],['Ville',p.city],['Adresse',p.address]].filter(([,v])=>v);
+    const mapsUrl=`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(p.address||p.name)}`;
+    body.innerHTML=`
+    ${rows.map(([k,v])=>`<div class="info-row"><span class="info-key">${k}</span><span class="info-val">${v}</span></div>`).join('')}
+    ${p.note?`<p class="pin-note">${p.note}</p>`:''}
+    <div class="pin-badges">
+      <span class="badge">${p.pub?'Public':'Privé'}</span>
+      ${p.address?`<a class="go-btn" href="${mapsUrl}" target="_blank">S'y rendre →</a>`:''}
+    </div>`;
+  }
+}
+
+function renderSketchTab(p, body){
+  body.innerHTML=`
+  <div class="sketch-toolbar">
+    <span class="sketch-label">Croquis</span>
+    <div class="sketch-btns">
+      <button class="sketch-btn solid" onclick="saveSketch()">Sauvegarder</button>
+      <button class="sketch-btn outline" onclick="clearSketch()">Effacer</button>
+    </div>
+  </div>
+  <canvas id="sketch-canvas" width="270" height="200"></canvas>
+  <div class="sketch-import">
+    <label>Ou importer un fichier</label>
+    <input type="file" accept="image/*" onchange="importSketch(this)"/>
+  </div>`;
+  const canvas=document.getElementById('sketch-canvas');
+  redrawCanvas(p, canvas);
+  canvas.addEventListener('mousedown', e=>{isDrawing=true;currentStroke=[pos(e,canvas)];});
+  canvas.addEventListener('mousemove', e=>{if(!isDrawing)return;currentStroke.push(pos(e,canvas));redrawCanvas(p,canvas,currentStroke);});
+  canvas.addEventListener('mouseup', ()=>{if(isDrawing&&currentStroke.length>1){pendingStrokes.push([...currentStroke]);}isDrawing=false;currentStroke=[];});
+  canvas.addEventListener('mouseleave', ()=>{if(isDrawing&&currentStroke.length>1){pendingStrokes.push([...currentStroke]);}isDrawing=false;currentStroke=[];});
+}
+
+function pos(e,canvas){
+  const r=canvas.getBoundingClientRect();
+  return{x:(e.clientX-r.left)*(canvas.width/r.width),y:(e.clientY-r.top)*(canvas.height/r.height)};
+}
+
+function redrawCanvas(p,canvas,live=[]){
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.strokeStyle='#111';ctx.lineWidth=1.5;ctx.lineCap='round';ctx.lineJoin='round';
+  [...(p.strokes||[]),...pendingStrokes,...(live.length?[live]:[])].forEach(s=>{
+    if(s.length<2)return;
+    ctx.beginPath();ctx.moveTo(s[0].x,s[0].y);
+    s.forEach(pt=>ctx.lineTo(pt.x,pt.y));ctx.stroke();
+  });
+}
+
+function saveSketch(){
+  const p=pins.find(x=>x.id===selectedId);
+  if(!p)return;
+  p.strokes=[...(p.strokes||[]),...pendingStrokes];
+  pendingStrokes=[];
+}
+
+function clearSketch(){
+  const p=pins.find(x=>x.id===selectedId);
+  if(!p)return;
+  p.strokes=[];pendingStrokes=[];
+  const canvas=document.getElementById('sketch-canvas');
+  if(canvas)canvas.getContext('2d').clearRect(0,0,canvas.width,canvas.height);
+}
+
+function importSketch(input){
+  const file=input.files[0];if(!file)return;
+  const reader=new FileReader();
+  reader.onload=ev=>{
+    const img=new Image();
+    img.onload=()=>{
+      const canvas=document.getElementById('sketch-canvas');
+      if(!canvas)return;
+      canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);
+    };
+    img.src=ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function renderPhotosTab(p, body){
+  const photos=p.photos||[];
+  body.innerHTML=`
+  <div class="photo-header">
+    <span class="photo-label">Photos</span>
+    <label class="photo-add-btn">+ Ajouter<input type="file" accept="image/*" multiple onchange="addPhotos(this)"/></label>
+  </div>
+  ${photos.length===0
+    ?`<label class="photo-empty"><span style="font-size:24px">📷</span>Glissez ou sélectionnez vos photos<input type="file" accept="image/*" multiple onchange="addPhotos(this)"/></label>`
+    :`<div class="photo-grid">
+      ${photos.map((src,i)=>`<div class="photo-item"><img src="${src}"/><button class="photo-del" onclick="removePhoto(${i})">×</button></div>`).join('')}
+      <label class="photo-add-cell">+<input type="file" accept="image/*" multiple onchange="addPhotos(this)"/></label>
+    </div>`
+  }`;
+}
+
+function addPhotos(input){
+  const p=pins.find(x=>x.id===selectedId);if(!p)return;
+  Array.from(input.files).forEach(file=>{
+    const reader=new FileReader();
+    reader.onload=ev=>{p.photos.push(ev.target.result);renderPhotosTab(p,document.getElementById('panel-body'));};
+    reader.readAsDataURL(file);
+  });
+}
+
+function removePhoto(idx){
+  const p=pins.find(x=>x.id===selectedId);if(!p)return;
+  p.photos.splice(idx,1);
+  renderPhotosTab(p,document.getElementById('panel-body'));
+}
+
+// ── ACTIONS ──────────────────────────────────────────────────────────────────
+function savePin(){
+  const p=pins.find(x=>x.id===selectedId);if(!p)return;
+  const name=document.getElementById('f-name')?.value.trim();
+  if(!name){document.getElementById('f-name').focus();return;}
+  p.name=name;
+  p.architect=document.getElementById('f-arch')?.value.trim()||'';
+  p.city=document.getElementById('f-city')?.value.trim()||'';
+  p.year=document.getElementById('f-year')?.value||'';
+  p.address=document.getElementById('f-addr')?.value.trim()||'';
+  p.type=document.getElementById('f-type2')?.value||'Musée';
+  p.style=document.getElementById('f-style2')?.value||'Contemporain';
+  p.epoch=document.getElementById('f-epoch2')?.value||'Après 2000';
+  p.note=document.getElementById('f-note')?.value.trim()||'';
+  p.pub=document.getElementById('f-pub')?.checked||false;
+  renderPins();
+  openPanel(p.id,'info',false);
+}
+
+function toggleStar(){
+  const p=pins.find(x=>x.id===selectedId);if(!p)return;
+  p.starred=!p.starred;
+  const sb=document.getElementById('star-btn');
+  sb.className='star-btn'+(p.starred?' on':'');
+  renderPins();
+}
+
+function toggleAdding(){
+  adding=!adding;
+  const btn=document.getElementById('add-btn');
+  btn.classList.toggle('adding',adding);
+  btn.textContent=adding?'Cliquez sur la carte…':'+ Ajouter';
+  map.getContainer().style.cursor=adding?'crosshair':'';
+  if(adding)closePanel();
+}
+
+function setMode(m,btn){
+  mode=m;
+  document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  closePanel();
+  renderPins();
+}
+
+function resetFilters(){
+  document.getElementById('search').value='';
+  document.getElementById('f-type').value='Type';
+  document.getElementById('f-style').value='Style';
+  document.getElementById('f-epoch').value='Époque';
+  renderPins();
+}
+
+// init
+renderPins();
+</script>
+</body>
+</html>
